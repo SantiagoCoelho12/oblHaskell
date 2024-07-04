@@ -1,3 +1,5 @@
+-- Santiago Coelho 204113
+-- Luca Bessonart 231764
 module Mastermind where
 
 import System.IO
@@ -12,6 +14,15 @@ import Text.Read
 data Result = Win | Lost deriving (Show)
 data Difficulty = Easy | Hard deriving (Show)
 data SO = Windows | Mac deriving (Show)
+data Node =
+      Empty
+      | Node String Node Node Node Integer Integer   -- valor nodos hijos altura estado
+      deriving (Show)
+data Control = 
+    P Integer Char -- valor posicion +
+    | C Char -- valor presente
+    | N Integer Char -- valor posicion -
+    deriving (Show)
 
 correctChar :: Char
 correctChar = '/'
@@ -36,8 +47,39 @@ filePath = "mastermindLog.txt"
 title :: IO ()
 title = putStrLn "              Mastermind"
 
+nodeTree :: Node
+nodeTree = Empty
+
+buildTree::Node
+buildTree = Node "110"
+            (Node "002" 
+                (Node "002" (Node "000" Empty Empty Empty 2 1) (Node "001" Empty Empty Empty 2 1) Empty 1 1) 
+                (Node "012" (Node "010" Empty Empty Empty 2 1) (Node "011" Empty Empty Empty 2 1) Empty 1 1)
+                (Node "022" (Node "020" Empty Empty Empty 2 1) (Node "021" Empty Empty Empty 2 1) Empty 1 1)
+                0
+                1
+            )
+            (Node "102" 
+                (Node "102" (Node "100" Empty Empty Empty 2 1) (Node "101" Empty Empty Empty 2 1) Empty 1 1) 
+                (Node "112" Empty (Node "111" Empty Empty Empty 2 1) Empty 1 1) 
+                (Node "122" (Node "120" Empty Empty Empty 2 1) (Node "121" Empty Empty Empty 2 1) Empty 1 1)
+                0
+                1
+            )
+            (Node "202" 
+                (Node "202" (Node "200" Empty Empty Empty 2 1) (Node "201" Empty Empty Empty 2 1) Empty 1 1) 
+                (Node "212" (Node "210" Empty Empty Empty 2 1) (Node "211" Empty Empty Empty 2 1) Empty 1 1)
+                (Node "222" (Node "220" Empty Empty Empty 2 1) (Node "221" Empty Empty Empty 2 1) Empty 1 1)
+                0
+                1
+            )
+            (-1)
+            1
+
 type Code = Integer
 type Turn = Integer
+type Clue = String
+type Solution = String
 
 play :: SO -> IO ()
 play so = do
@@ -215,35 +257,26 @@ autogueser:: SO -> IO ()
 autogueser so = do
     clear so
     title
-    putStrLn "Insert code:"
+    putStrLn "Insert code:" -- se asume codigo de 3 digitos 0, 1 o 2
     usrCode <- getLine
     -- validar codigo
-    let (n,c,s,i) = autoguess "_" usrCode nodeTree 0 []
+    let (n,c,s,i) = autoguess "_" usrCode buildTree 0 []
+    --let (Node v b1 b2 b3 i1 i2) = getTallestNode (cut buildTree [C '2']) (-1)
+    --putStrLn (show v)
     putStrLn ("The clue was resolved in " ++ show i ++ " steps")
     end <- getLine
     clear so
 
-nodeTree :: Node
-nodeTree = Empty
-
-type Clue = String
-type Solution = String
-data Node =
-      Empty
-      | Node String Node Node Node Integer Integer   -- valor nodos hijos altura estado 
-data Control = 
-    P Integer Char -- valor posicion +
-    | C Integer -- valor presente
-    | N Integer Char -- valor posicion -
-
 autoguess:: Clue -> Solution -> Node -> Integer -> [Control] ->(Node,Clue,Solution,Integer)
-autoguess ("////") _ _ counter _ = (Empty,"","",counter)
-autoguess ("_") solution (Node value b1 b2 b3 i1 i2 ) counter controls = case (getListOfClue solution value) of{
-     clues -> autoguess clues solution (Node value b1 b2 b3 i1 i2 ) (counter++) (generateControls clues solution 0)
+autoguess ("///") _ _ counter _ = (Empty,"","",counter)
+autoguess ("_") solution (Node value b1 b2 b3 i1 i2 ) counter controls = case (getListOfClue solution value solution) of{
+     clues -> autoguess clues solution (Node value b1 b2 b3 i1 i2 ) ((counter+1)) (generateControls clues value 0)
     }
 autoguess clue solution node counter controls = case (cut node controls) of{
-    n' -> case (getListOfClue solution (getTallestNodeValue n' 0)) of{
-        clues ->  autoguess clue solution n' (counter++) (controls++generateControls clues solution 0)
+    n' -> case (getValue (getTallestNode n' 0)) of{
+            value-> case (getListOfClue solution value solution) of{
+            newclues ->  autoguess newclues solution (cut' n' value) ((counter+1)) (controls++(generateControls newclues value 0))
+        }
     }
 }
 
@@ -251,25 +284,28 @@ cut::Node -> [Control] -> Node
 cut Empty _ = Empty
 cut n [] = n
 cut (Node value n1 n2 n3 h e) (x:xs) = case x of{
-    P i c -> case i==h of{
+    P i c -> case (i==h) of{
         True -> case (check' value i c) of{
-            True -> cut (Node value n1 n2 n3 h e) xs;
+            True -> cut (Node value (cut n1 [x]) (cut n2 [x]) (cut n3 [x]) h e) xs;
             False -> Empty;
         };
         False -> case (check' value i c) of{
-            True -> cut (Node value n1 n2 n3 h e) xs;
-            False -> cut (Node value (cut n1 x) (n2 x) (n3 x) h 0) xs;
+            True -> cut (Node value (cut n1 [x]) (cut n2 [x]) (cut n3 [x]) h e) xs;
+            False -> cut (Node value (cut n1 [x]) (cut n2 [x]) (cut n3 [x]) h 0) xs;
         }
     };
-    C c -> check' l 0 c || check' l 1 c || check' l 2 c;
-    P i c -> case i==h of{
+    C c -> case (check' value 0 c || check' value 1 c || check' value 2 c) of{
+            True-> cut (Node value (cut n1 [x]) (cut n2 [x]) (cut n3 [x]) h e) xs;
+            False-> cut (Node value (cut n1 [x]) (cut n2 [x]) (cut n3 [x]) h 0) xs;
+    };
+    N i c -> case (i==h) of{
         True -> case (not (check' value i c)) of{
-            True -> cut (Node value n1 n2 n3 h e) xs;
+            True -> cut (Node value (cut n1 [x]) (cut n2 [x]) (cut n3 [x]) h e) xs;
             False -> Empty;
         };
         False -> case (not (check' value i c)) of{
-            True -> cut (Node value n1 n2 n3 h e) xs;
-            False -> cut (Node value (cut n1 x) (n2 x) (n3 x) h 0) xs;
+            True -> cut (Node value (cut n1 [x]) (cut n2 [x]) (cut n3 [x]) h e) xs;
+            False -> cut (Node value (cut n1 [x]) (cut n2 [x]) (cut n3 [x]) h 0) xs;
         }
     }
 }
@@ -277,16 +313,16 @@ cut (Node value n1 n2 n3 h e) (x:xs) = case x of{
 generateControls:: String -> String ->Integer -> [Control]
 generateControls [] _ _ = []  
 generateControls (x:xs) (y:ys) counter = case x of {
-    correctChar -> [P counter y] ++ (generateControls xs ys counter++);
-    wrongPositionChar ->[C y]++(generateControls xs ys counter++);
-    notPresentChar ->[N counter y]++(generateControls xs ys counter++)
+    '/' -> [P counter y] ++ (generateControls xs ys (counter+1));
+    '~' ->[C y]++(generateControls xs ys (counter+1));
+    'x' ->[N counter y]++(generateControls xs ys (counter+1))
 }
 
 check::String -> Control ->Bool
 check l control = case control of{
     P i c -> check' l i c;
     C c -> check' l 0 c || check' l 1 c || check' l 2 c;
-    P i c -> not (check' l i c)
+    N i c -> not (check' l i c)
 }
 
 check':: String-> Integer -> Char -> Bool
@@ -294,9 +330,32 @@ check' (y:ys) 0 v = v==y
 check' (y:ys) 1 v = check' ys 0 v
 check' (y:ys) 2 v = check' ys 1 v
 
-getTallestNodeValue:: Node-> Integer -> String 
-getTallestNodeValue (N value n1 n2 n3 h e) i = case getHeight
+getTallestNode:: Node-> Integer -> Node 
+getTallestNode (Node value n1 n2 n3 h e) i = case e of{
+        1-> (Node value n1 n2 n3 h e);
+        0-> (getTallestSubNode ([(n1,(getHeight n1)),(n2,(getHeight n2)),(n3,(getHeight n3))]) (-1) Empty);
+        _-> error "estado incorrecto"
+}   
+getTallestNode Empty i = Empty
+
+getTallestSubNode:: [(Node,Integer)]-> Integer -> Node -> Node
+getTallestSubNode [ ] i n = n
+getTallestSubNode ((newnode,i):xs) max maxnode = case (i>max) of{
+    True -> getTallestSubNode xs i newnode;
+    False ->  getTallestSubNode xs max maxnode 
+}
+
+getValue:: Node -> String
+getValue (Node v _ _ _ _ _ )= v
+getValue Empty = error "empty node"
 
 getHeight:: Node -> Integer
 getHeight Empty = 0
-getHeight (N v n1 n2 n3 h e) = e + getHeight n1 + getHeight n2 + getHeight n3;
+getHeight (Node v n1 n2 n3 h e) = e + getHeight n1 + getHeight n2 + getHeight n3;
+
+cut':: Node -> String -> Node
+cut' Empty _ = Empty
+cut' (Node v n1 n2 n3 h e) string = case (v==string) of {
+    True -> Node v (cut' n1 string) (cut' n2 string) (cut' n3 string) h 0;
+    False -> Node v (cut' n1 string) (cut' n2 string) (cut' n3 string) h e;  
+}
