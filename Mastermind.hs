@@ -13,8 +13,6 @@ data Result = Win | Lost deriving (Show)
 data Difficulty = Easy | Hard deriving (Show)
 data SO = Windows | Mac deriving (Show)
 
-
- 
 correctChar :: Char
 correctChar = '/'
 
@@ -63,7 +61,8 @@ play so = do
             play' Hard so pcCode [] 0
             play so
         "3" -> do
-            --autogueser
+            autogueser so
+            play so
         "4" -> do
             readLog so
             play so
@@ -210,89 +209,94 @@ play' d so pcCode cs t = do
                     end <- getLine
                     play' d so pcCode cs t
                     clear so
-autogueser:: String -> int
-autogueser c = 
-    do
 
 
+autogueser:: SO -> IO ()
+autogueser so = do
+    clear so
+    title
+    putStrLn "Insert code:"
+    usrCode <- getLine
+    -- validar codigo
+    let (n,c,s,i) = autoguess "_" usrCode nodeTree 0 []
+    putStrLn ("The clue was resolved in " ++ show i ++ " steps")
+    end <- getLine
+    clear so
 
-type solution = String
-type clue = String
+nodeTree :: Node
+nodeTree = Empty
+
+type Clue = String
+type Solution = String
 data Node =
       Empty
-      | N String Node Node Node int int   -- valor nodos hijos altura estado 
-data control = 
-    P int char -- valor posicion +
-    | C char -- valor presente
-    | N int char -- valor posicion -
+      | Node String Node Node Node Integer Integer   -- valor nodos hijos altura estado 
+data Control = 
+    P Integer Char -- valor posicion +
+    | C Integer -- valor presente
+    | N Integer Char -- valor posicion -
 
-autoguess::clue -> solution -> Node -> counter -> [control] ->(Node,clue,solution,int)
-autoguess ("////") x y counter = (Empty,"","",counter)
-autoguess ("_") s (N v _ _ _ _ _ ) counter = case (getListOfClue s v) of{
-     clues -> autoguess clues s N (counter++) (generateControls clues s 0)
+autoguess:: Clue -> Solution -> Node -> Integer -> [Control] ->(Node,Clue,Solution,Integer)
+autoguess ("////") _ _ counter _ = (Empty,"","",counter)
+autoguess ("_") solution (Node value b1 b2 b3 i1 i2 ) counter controls = case (getListOfClue solution value) of{
+     clues -> autoguess clues solution (Node value b1 b2 b3 i1 i2 ) (counter++) (generateControls clues solution 0)
     }
-autoguess c s n l counter controls = case (cut n contrls) of{
-    n' -> case (getListOfClue s (getTallestNodeValue n' 0)) of{
-    clues ->  autoguess clue s n' (counter++) (controls++generateControls clues s 0)
+autoguess clue solution node counter controls = case (cut node controls) of{
+    n' -> case (getListOfClue solution (getTallestNodeValue n' 0)) of{
+        clues ->  autoguess clue solution n' (counter++) (controls++generateControls clues solution 0)
     }
 }
 
-cut::Node -> [control] -> Node
+cut::Node -> [Control] -> Node
 cut Empty _ = Empty
 cut n [] = n
-cut N value n1 n2 n3 h e x:xs = case x of{
-    P i c -> case i of{
-        i==h-> case (check' value i c) of{
-            true -> cut (N value n1 n2 n3 h e) xs;
-            false -> Empty
+cut (Node value n1 n2 n3 h e) (x:xs) = case x of{
+    P i c -> case i==h of{
+        True -> case (check' value i c) of{
+            True -> cut (Node value n1 n2 n3 h e) xs;
+            False -> Empty;
+        };
+        False -> case (check' value i c) of{
+            True -> cut (Node value n1 n2 n3 h e) xs;
+            False -> cut (Node value (cut n1 x) (n2 x) (n3 x) h 0) xs;
         }
-        i!=h-> case (check' value i c) of{
-            true -> cut (N value n1 n2 n3 h e) xs;
-            false -> cut (N value (cut n1 x) (n2 x) (n3 x) h 0) xs
-        }
-    }
+    };
     C c -> check' l 0 c || check' l 1 c || check' l 2 c;
-    P i c ->-> case i of{
-        i==h-> case (not check' value i c) of{
-            true -> cut (N value n1 n2 n3 h e) xs;
-            false -> Empty
-        }
-        i!=h-> case (not check' value i c) of{
-            true -> cut (N value n1 n2 n3 h e) xs;
-            false -> cut (N value (cut n1 x) (n2 x) (n3 x) h 0) xs
+    P i c -> case i==h of{
+        True -> case (not (check' value i c)) of{
+            True -> cut (Node value n1 n2 n3 h e) xs;
+            False -> Empty;
+        };
+        False -> case (not (check' value i c)) of{
+            True -> cut (Node value n1 n2 n3 h e) xs;
+            False -> cut (Node value (cut n1 x) (n2 x) (n3 x) h 0) xs;
         }
     }
 }
-    
 
-
-
-generateControls:: String -> String ->int ->controls
+generateControls:: String -> String ->Integer -> [Control]
 generateControls [] _ _ = []  
-generateControls x:xs y:ys counter = case x of {
+generateControls (x:xs) (y:ys) counter = case x of {
     correctChar -> [P counter y] ++ (generateControls xs ys counter++);
     wrongPositionChar ->[C y]++(generateControls xs ys counter++);
     notPresentChar ->[N counter y]++(generateControls xs ys counter++)
 }
 
-check::String ->control->Bool
+check::String -> Control ->Bool
 check l control = case control of{
     P i c -> check' l i c;
     C c -> check' l 0 c || check' l 1 c || check' l 2 c;
     P i c -> not (check' l i c)
 }
 
-check':: String-> int-> char -> Bool
-y:ys 0 v = v==y
-y:ys 1 v = check' ys 0 v
-y:ys 2 v = check' ys 1 v
+check':: String-> Integer -> Char -> Bool
+check' (y:ys) 0 v = v==y
+check' (y:ys) 1 v = check' ys 0 v
+check' (y:ys) 2 v = check' ys 1 v
 
-getTallestNodeValue:: Node-> int -> String 
-getTallestNodeValue N value n1 n2 n3 h e i = case getHeight
+getTallestNodeValue:: Node-> Integer -> String 
+getTallestNodeValue (N value n1 n2 n3 h e) i = case getHeight
 
-
-
-getHeight:: Node -> int
+getHeight:: Node -> Integer
 getHeight Empty = 0
-getHeight N v n1 n2 n3 h e c = e + getHeight n1 + getHeight n2 + getHeight n3;
-
+getHeight (N v n1 n2 n3 h e) = e + getHeight n1 + getHeight n2 + getHeight n3;
